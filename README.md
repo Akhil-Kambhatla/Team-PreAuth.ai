@@ -1,17 +1,17 @@
 # Claude-Hackathon
 
 > **Getting care should not depend on paperwork.**  
-> **Sentient helps doctors and care teams move through prior authorization faster, so patients can get treated sooner.**
+> **PreAuth.ai helps doctors and care teams move through prior authorization faster, so patients can get treated sooner.**
 
 ## Why this matters
 
 Doctors and care teams spend too much time going back and forth with insurance companies before they can move ahead with treatment. That means delays, stress, and in some cases, patients giving up before they get the care they need.
 
-We built **Sentient** to make that process simpler, faster, and less frustrating.
+We built **PreAuth.ai** to make that process simpler, faster, and less frustrating.
 
 ## What it does
 
-**Sentient** is a simple platform that helps healthcare providers handle prior authorization with less manual work.
+**PreAuth.ai** is a simple platform that helps healthcare providers handle prior authorization with less manual work.
 
 With it, users can:
 
@@ -23,7 +23,7 @@ With it, users can:
 
 ## The big idea
 
-Instead of making doctors and staff chase forms, portals, and repeated follow-ups, **Sentinent brings the process into one clear flow**.
+Instead of making doctors and staff chase forms, portals, and repeated follow-ups, **PreAuth.ai** brings the process into one clear flow**.
 
 That means:
 
@@ -43,7 +43,7 @@ It solves a real problem that affects real patients.
 
 When treatment gets delayed, people suffer.  
 When admin work takes over, doctors lose time they should be spending on care.  
-**Sentient tackles that problem directly.**
+**PreAuth.ai tackles that problem directly.**
 
 ## Features
 
