@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PreAuth.ai — Prior Authorization Risk Scorer</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ─── Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --paper: #F7F5F0;
+      --paper-dark: #EDEBE4;
+      --ink: #0D0D0D;
+      --ink-2: #3D3D3D;
+      --ink-3: #888880;
+      --red: #C8102E;
+      --red-soft: #FFF0F0;
+      --red-border: #FFCDD2;
+      --green: #166534;
+      --green-soft: #F0FFF4;
+      --green-border: #86efac;
+      --amber: #92400E;
+      --amber-soft: #FFFBEB;
+      --amber-border: #FDE68A;
+      --border: #E0DDCF;
+      --white: #FFFFFF;
+      --grain-url: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+    }
+
+    /* ─── Reset & Base ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Grain Overlay ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: var(--grain-url);
+      background-size: 256px 256px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── Animations ─────────────────────────────────────────────── */
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0.5); }
+      70%  { box-shadow: 0 0 0 7px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    @keyframes progressFill {
+      from { width: 0%; }
+      to   { width: 82%; }
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      height: 56px;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 100;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .header-logo-icon {
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .header-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+    }
+    .brand-name {
+      font-family: 'DM Serif Display', serif;
+      font-style: italic;
+      font-size: 18px;
+      color: var(--ink);
+      line-height: 1;
+    }
+    .brand-tld {
+      font-family: 'DM Mono', monospace;
+      font-size: 18px;
+      color: var(--red);
+      line-height: 1;
+    }
+    .header-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 16px;
+      flex-shrink: 0;
+    }
+    .header-subtitle {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+    .status-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--ink-2);
+    }
+    .model-tag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .model-diamond {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-3);
+    }
+    .model-name {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-3);
+    }
+
+    /* ─── Upload Screen ──────────────────────────────────────────── */
+    #upload-screen {
+      min-height: calc(100vh - 56px);
+      background: var(--paper);
+      position: relative;
+      z-index: 1;
+    }
+    .upload-columns {
+      display: grid;
+      grid-template-columns: 55fr 45fr;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* Left hero column */
+    .hero-col {
+      background: var(--paper);
+      padding: 80px 64px 80px 80px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+    .eyebrow-tag {
+      display: inline-block;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--red);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      border: 1px solid var(--red);
+      padding: 4px 12px;
+      border-radius: 2px;
+    }
+    .hero-headline {
+      font-family: 'DM Serif Display', serif;
+      font-size: 52px;
+      color: var(--ink);
+      line-height: 1.12;
+      margin-top: 20px;
+    }
+    .hero-headline em {
+      font-style: italic;
+    }
+    .hero-sub {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px;
+      color: var(--ink-2);
+      line-height: 1.75;
+      max-width: 420px;
+      margin-top: 20px;
+    }
+    .stats-row {
+      display: flex;
+      flex-direction: row;
+      gap: 0;
+      margin-top: 48px;
+    }
+    .stat-item {
+      padding: 0 32px;
+      border-right: 1px solid var(--border);
+    }
+    .stat-item:first-child { padding-left: 0; }
+    .stat-item:last-child { border-right: none; }
+    .stat-number {
+      font-family: 'DM Mono', monospace;
+      font-size: 30px;
+      color: var(--ink);
+      font-weight: 500;
+      line-height: 1;
+    }
+    .stat-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    .hero-tagline {
+      margin-top: 56px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--ink-3);
+      font-style: italic;
+    }
+
+    /* Right form column */
+    .form-col {
+      background: var(--white);
+      border-left: 1px solid var(--border);
+      padding: 64px 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+    .panel-heading {
+      font-family: 'DM Serif Display', serif;
+      font-size: 26px;
+      color: var(--ink);
+    }
+    .panel-subheading {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--ink-3);
+      margin-top: 6px;
+    }
+    .panel-rule {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 24px 0;
+    }
+
+    /* Upload boxes */
+    .upload-boxes {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .upload-box {
+      border: 1.5px dashed var(--border);
+      border-radius: 6px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+      transition: all 200ms ease;
+      position: relative;
+    }
+    .upload-box:hover {
+      border-color: var(--ink-3);
+      background: var(--paper);
+    }
+    .upload-box input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon-wrap {
+      width: 48px;
+      height: 48px;
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 200ms ease;
+    }
+    .upload-icon-wrap svg {
+      color: var(--ink-3);
+      transition: color 200ms ease;
+    }
+    .upload-box-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .upload-box-title {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .upload-box-sub {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 2px;
+    }
+    .file-name {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      margin-top: 4px;
+      display: none;
+    }
+    .upload-browse {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-3);
+      flex-shrink: 0;
+      transition: all 200ms ease;
+    }
+    .upload-check {
+      display: none;
+      flex-shrink: 0;
+    }
+
+    /* Selected state */
+    .upload-box.selected {
+      border: 1px solid var(--green-border);
+      border-style: solid;
+      background: var(--green-soft);
+    }
+    .upload-box.selected .upload-icon-wrap {
+      background: var(--white);
+    }
+    .upload-box.selected .upload-icon-wrap svg {
+      color: var(--green);
+    }
+    .upload-box.selected .file-name {
+      display: block;
+    }
+    .upload-box.selected .upload-browse {
+      display: none;
+    }
+    .upload-box.selected .upload-check {
+      display: block;
+    }
+
+    /* Demo button */
+    #demo-btn {
+      margin-top: 20px;
+      width: 100%;
+      padding: 12px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--ink-3);
+      text-align: center;
+      cursor: pointer;
+      transition: all 150ms ease;
+    }
+    #demo-btn:hover {
+      background: var(--paper);
+      border-color: var(--ink-3);
+    }
+
+    /* Analyze button */
+    #analyze-btn {
+      margin-top: 16px;
+      width: 100%;
+      height: 52px;
+      background: var(--red);
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 150ms, transform 100ms, box-shadow 150ms;
+    }
+    #analyze-btn:hover:not(:disabled) {
+      background: #A50D25;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(200, 16, 46, 0.3);
+    }
+    #analyze-btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+    #analyze-btn:disabled,
+    #analyze-btn.disabled {
+      background: var(--paper-dark);
+      color: var(--ink-3);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .analyze-disclaimer {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      text-align: center;
+      margin-top: 12px;
+      font-style: italic;
+    }
+
+    /* ─── Loading Screen ─────────────────────────────────────────── */
+    #loading-screen {
+      display: none;
+      min-height: calc(100vh - 56px);
+      background: var(--paper);
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+    .loading-inner {
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      padding: 0 24px;
+    }
+    .progress-track {
+      height: 2px;
+      background: var(--paper-dark);
+      border-radius: 1px;
+      overflow: hidden;
+      margin-bottom: 64px;
+    }
+    #progress-fill {
+      height: 100%;
+      background: var(--red);
+      width: 0%;
+      border-radius: 1px;
+    }
+    #loading-counter {
+      font-family: 'DM Mono', monospace;
+      font-size: 88px;
+      font-weight: 500;
+      color: var(--ink);
+      line-height: 1;
+      display: block;
+    }
+    #loading-step {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px;
+      color: var(--ink-2);
+      margin-top: 24px;
+      transition: opacity 300ms ease;
+    }
+    .loading-credit {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--ink-3);
+      font-style: italic;
+      margin-top: 40px;
+    }
+
+    /* ─── Results Screen ─────────────────────────────────────────── */
+    #results-screen {
+      display: none;
+      min-height: calc(100vh - 56px);
+      position: relative;
+      z-index: 1;
+    }
+    .results-grid {
+      display: grid;
+      grid-template-columns: 45fr 55fr;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* Left: Document panel */
+    .doc-panel {
+      background: var(--paper-dark);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    .doc-tab-header {
+      height: 52px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--white);
+      flex-shrink: 0;
+    }
+    .doc-tab-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      flex-shrink: 0;
+    }
+    .doc-tabs {
+      margin-left: auto;
+      display: flex;
+      gap: 6px;
+    }
+    .doc-tab {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      padding: 6px 14px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 150ms ease;
+      background: transparent;
+      color: var(--ink-3);
+    }
+    .doc-tab.active {
+      background: var(--ink);
+      color: var(--white);
+      border-color: var(--ink);
+    }
+    #pdf-viewer {
+      width: 100%;
+      flex: 1;
+      border: none;
+      height: calc(100vh - 56px - 52px);
+    }
+    .pdf-fallback {
+      display: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--ink-3);
+      font-style: italic;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    /* Right: Analysis panel */
+    .analysis-panel {
+      background: var(--white);
+      overflow-y: auto;
+      padding: 36px 44px;
+    }
+
+    /* Cards */
+    .analysis-card {
+      margin-bottom: 16px;
+    }
+    .score-card {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 36px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .score-card-inner {
+      position: relative;
+      z-index: 1;
+    }
+    .score-eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+    .gauge-wrap {
+      margin-top: 16px;
+      display: flex;
+      justify-content: center;
+      position: relative;
+    }
+    .gauge-svg {
+      display: block;
+    }
+    .score-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px;
+      margin-top: -36px;
+    }
+    #score-number {
+      font-family: 'DM Mono', monospace;
+      font-size: 72px;
+      font-weight: 500;
+      line-height: 1;
+      color: var(--ink);
+    }
+    .score-denom {
+      font-family: 'DM Mono', monospace;
+      font-size: 28px;
+      color: var(--ink-3);
+      line-height: 1;
+    }
+    .risk-badge {
+      display: inline-block;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 6px 16px;
+      border-radius: 3px;
+      margin-top: 12px;
+    }
+    .risk-low     { background: var(--green-soft); border: 1px solid var(--green-border); color: var(--green); }
+    .risk-moderate{ background: var(--amber-soft);  border: 1px solid var(--amber-border);  color: var(--amber); }
+    .risk-high    { background: #FFF7ED; border: 1px solid #FED7AA; color: #C2410C; }
+    .risk-very-high { background: var(--red-soft); border: 1px solid var(--red-border); color: var(--red); }
+
+    .mini-stats {
+      display: flex;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .mini-stat {
+      flex: 1;
+      text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .mini-stat:last-child { border-right: none; }
+    .mini-stat-num {
+      font-family: 'DM Mono', monospace;
+      font-size: 22px;
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .mini-stat-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 4px;
+    }
+
+    /* Content cards */
+    .content-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-accent {
+      width: 3px;
+      height: 18px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .card-title {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .card-ranked {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-left: auto;
+      opacity: 0.75;
+    }
+    .count-badge {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+    }
+    .count-badge-red {
+      background: var(--red-soft);
+      border: 1px solid var(--red-border);
+      color: var(--red);
+    }
+    .count-badge-green {
+      background: var(--green-soft);
+      border: 1px solid var(--green-border);
+      color: var(--green);
+    }
+
+    #rationale-text {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      color: var(--ink-2);
+      line-height: 1.8;
+      margin-top: 14px;
+    }
+
+    /* Factor / Action rows */
+    #risk-factors-list,
+    #actions-list {
+      margin-top: 16px;
+      list-style: none;
+    }
+    .factor-row, .action-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px 12px 20px;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+      cursor: default;
+      transition: background 150ms;
+    }
+    .factor-row:last-child, .action-row:last-child { border-bottom: none; }
+    .factor-row::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      height: calc(100% - 20px);
+      width: 3px;
+      background: var(--red);
+      border-radius: 2px;
+    }
+    .action-row::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      height: calc(100% - 20px);
+      width: 3px;
+      background: var(--green);
+      border-radius: 2px;
+    }
+    .factor-row:hover { background: var(--red-soft); }
+    .action-row:hover { background: var(--green-soft); }
+    .action-row:hover .checkbox-icon { color: var(--green); }
+
+    .row-index {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-3);
+      min-width: 24px;
+      flex-shrink: 0;
+      padding-top: 2px;
+      font-weight: 400;
+    }
+    .row-index.p-critical { color: var(--red); font-weight: 500; }
+    .row-index.p-high     { color: #C2410C; }
+    .row-index.p-mid      { color: var(--amber); }
+    .action-row .row-index.p-critical { color: var(--green); font-weight: 500; }
+    .action-row .row-index.p-high     { color: #15803d; }
+    .action-row .row-index.p-mid      { color: var(--amber); }
+    .row-text {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      color: var(--ink-2);
+      line-height: 1.65;
+    }
+    .checkbox-icon {
+      flex-shrink: 0;
+      color: var(--ink-3);
+      margin-top: 2px;
+      transition: color 150ms;
+    }
+
+    /* Footer actions card */
+    .footer-card {
+      background: transparent;
+      padding: 8px 0 32px;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .ghost-btn {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--ink-2);
+      padding: 10px 20px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--white);
+      cursor: pointer;
+      transition: all 150ms ease;
+    }
+    .ghost-btn:hover {
+      background: var(--paper);
+      border-color: var(--ink-3);
+    }
+    .footer-disclaimer {
+      margin-left: auto;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      font-style: italic;
+    }
+
+    /* ─── Mobile ──────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      header { padding: 0 20px; }
+      .upload-columns { grid-template-columns: 1fr; }
+      .hero-col { display: none; }
+      .form-col {
+        border-left: none;
+        padding: 40px 24px;
+        min-height: calc(100vh - 56px);
+      }
+      .results-grid { grid-template-columns: 1fr; }
+      .doc-panel { display: none; }
+      .analysis-panel { padding: 24px 20px; }
+      .stats-row { flex-direction: column; gap: 16px; }
+      .stat-item { padding: 0; border-right: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       HEADER
+  ═══════════════════════════════════════════════════════════════ -->
+  <header>
+    <div class="header-left">
+      <!-- Logo icon: two stacked docs with shield overlay -->
+      <svg class="header-logo-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="3" width="10" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <rect x="3" y="5" width="10" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M10.5 9.5 L12 11.5 L15 8" stroke="#C8102E" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="header-brand">
+        <span class="brand-name">PreAuth</span><span class="brand-tld">.ai</span>
+      </div>
+      <div class="header-divider"></div>
+      <span class="header-subtitle">Prior Authorization Risk Scorer</span>
+    </div>
+    <div class="header-right">
+      <div class="status-dot"></div>
+      <span class="status-label">AI Ready</span>
+      <div class="header-divider"></div>
+      <div class="model-tag">
+        <span class="model-diamond">◆</span>
+        <span class="model-name">Claude Sonnet</span>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       UPLOAD SCREEN
+  ═══════════════════════════════════════════════════════════════ -->
+  <section id="upload-screen">
+    <div class="upload-columns">
+
+      <!-- Left: Hero column -->
+      <div class="hero-col">
+        <span class="eyebrow-tag">Prior Authorization</span>
+
+        <h1 class="hero-headline">
+          Stop <em>guessing.</em><br>
+          Know before<br>
+          you submit.
+        </h1>
+
+        <p class="hero-sub">
+          Upload the insurer's policy and your patient record. Our AI cross-references every coverage requirement and returns a denial risk score with an exact fix list — before you submit.
+        </p>
+
+        <div class="stats-row">
+          <div class="stat-item">
+            <div class="stat-number">13 hrs</div>
+            <div class="stat-label">spent weekly on<br>PA paperwork</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">82%</div>
+            <div class="stat-label">of denied appeals<br>get overturned</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">$0</div>
+            <div class="stat-label">setup · no EHR<br>no contract</div>
+          </div>
+        </div>
+
+        <p class="hero-tagline">
+          Built for solo and rural clinics — the doctors the system forgot.
+        </p>
+      </div>
+
+      <!-- Right: Form column -->
+      <div class="form-col">
+        <div class="panel-heading">Analyze a case</div>
+        <div class="panel-subheading">Upload both documents to begin</div>
+        <hr class="panel-rule">
+
+        <div class="upload-boxes">
+
+          <!-- Policy upload box -->
+          <label class="upload-box" id="policy-box">
+            <input type="file" id="policy-input" accept=".pdf">
+            <div class="upload-icon-wrap">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="2" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                <line x1="7" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                <line x1="7" y1="10.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                <line x1="7" y1="14" x2="12" y2="14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="upload-box-content">
+              <div class="upload-box-title">Insurance Policy Document</div>
+              <div class="upload-box-sub">Payer's PA criteria PDF</div>
+              <div class="file-name" id="policy-filename"></div>
+            </div>
+            <span class="upload-browse">Browse →</span>
+            <svg class="upload-check" width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="8.5" stroke="#166534" stroke-width="1"/>
+              <path d="M5.5 9 L7.8 11.5 L12.5 6.5" stroke="#166534" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </label>
+
+          <!-- Record upload box -->
+          <label class="upload-box" id="record-box">
+            <input type="file" id="record-input" accept=".pdf">
+            <div class="upload-icon-wrap">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="11" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                <path d="M4 19c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                <line x1="15" y1="4" x2="15" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                <line x1="13" y1="6" x2="17" y2="6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="upload-box-content">
+              <div class="upload-box-title">Patient Medical Record</div>
+              <div class="upload-box-sub">Clinical notes PDF</div>
+              <div class="file-name" id="record-filename"></div>
+            </div>
+            <span class="upload-browse">Browse →</span>
+            <svg class="upload-check" width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="8.5" stroke="#166534" stroke-width="1"/>
+              <path d="M5.5 9 L7.8 11.5 L12.5 6.5" stroke="#166534" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </label>
+
+        </div>
+
+        <!-- Demo button -->
+        <button id="demo-btn" type="button">▶&nbsp; Load demo — BlueCrest Health · Whitfield RA · Humira case</button>
+
+        <!-- Analyze button -->
+        <button id="analyze-btn" type="button" disabled class="disabled">Analyze Denial Risk →</button>
+
+        <p class="analyze-disclaimer">Results are AI-generated. Always apply clinical judgment.</p>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       LOADING SCREEN
+  ═══════════════════════════════════════════════════════════════ -->
+  <section id="loading-screen">
+    <div class="loading-inner">
+      <div class="progress-track">
+        <div id="progress-fill"></div>
+      </div>
+
+      <span id="loading-counter">00</span>
+      <p id="loading-step" class="loading-step">Reading insurance policy document...</p>
+      <p class="loading-credit">Powered by Claude Sonnet · Anthropic</p>
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       RESULTS SCREEN
+  ═══════════════════════════════════════════════════════════════ -->
+  <section id="results-screen">
+    <div class="results-grid">
+
+      <!-- Left: Document viewer -->
+      <div class="doc-panel">
+        <div class="doc-tab-header">
+          <span class="doc-tab-label">Documents</span>
+          <div class="doc-tabs">
+            <button class="doc-tab active" id="tab-policy">Policy</button>
+            <button class="doc-tab" id="tab-record">Medical Record</button>
+          </div>
+        </div>
+        <iframe id="pdf-viewer" title="Document preview"></iframe>
+        <p class="pdf-fallback">PDF preview unavailable</p>
+      </div>
+
+      <!-- Right: Analysis panel -->
+      <div class="analysis-panel">
+
+        <!-- Card 1: Score hero -->
+        <div class="score-card analysis-card">
+          <div class="score-card-inner">
+            <p class="score-eyebrow">Denial Risk Score</p>
+
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" width="220" height="120" viewBox="0 0 220 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background arc -->
+                <path id="gauge-bg" d="M 20 110 A 90 90 0 0 1 200 110"
+                  fill="none"
+                  stroke="#EDEBE4"
+                  stroke-width="14"
+                  stroke-linecap="round"/>
+                <!-- Animated foreground arc -->
+                <path id="gauge-arc" d="M 20 110 A 90 90 0 0 1 200 110"
+                  fill="none"
+                  stroke="var(--red)"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  stroke-dasharray="283"
+                  stroke-dashoffset="283"/>
+              </svg>
+            </div>
+
+            <div class="score-display">
+              <span id="score-number">0</span>
+              <span class="score-denom">/100</span>
+            </div>
+
+            <div>
+              <span id="risk-badge" class="risk-badge risk-very-high">VERY HIGH</span>
+            </div>
+
+            <div class="mini-stats">
+              <div class="mini-stat">
+                <div class="mini-stat-num" id="stat-factors">—</div>
+                <div class="mini-stat-label">Risk Factors</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-num" id="stat-actions">—</div>
+                <div class="mini-stat-label">Action Items</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-num" id="stat-date">—</div>
+                <div class="mini-stat-label">Analyzed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Why this score -->
+        <div class="content-card analysis-card">
+          <div class="card-header">
+            <div class="card-accent" style="background: var(--ink);"></div>
+            <span class="card-title">Why This Score</span>
+          </div>
+          <p id="rationale-text"></p>
+        </div>
+
+        <!-- Card 3: Risk factors -->
+        <div class="content-card analysis-card">
+          <div class="card-header">
+            <div class="card-accent" style="background: var(--red);"></div>
+            <span class="card-title">Risk Factors</span>
+            <span class="count-badge count-badge-red" id="rf-count">0</span>
+            <span class="card-ranked">ranked by severity</span>
+          </div>
+          <div id="risk-factors-list"></div>
+        </div>
+
+        <!-- Card 4: Action items -->
+        <div class="content-card analysis-card">
+          <div class="card-header">
+            <div class="card-accent" style="background: var(--green);"></div>
+            <span class="card-title">Action Items</span>
+            <span class="count-badge count-badge-green" id="ac-count">0</span>
+            <span class="card-ranked">highest impact first</span>
+          </div>
+          <div id="actions-list"></div>
+        </div>
+
+        <!-- Card 5: Footer actions -->
+        <div class="footer-card analysis-card">
+          <button class="ghost-btn" id="copy-btn">Copy Full Report</button>
+          <button class="ghost-btn" id="new-analysis-btn">← New Analysis</button>
+          <span class="footer-disclaimer">AI-generated · clinical judgment required</span>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <script>
+    /* ─── State ──────────────────────────────────────────────────── */
+    let policyFileObj = null;
+    let recordFileObj = null;
+    let policyPdfUrl = null;
+    let recordPdfUrl = null;
+    let isDemoMode = false;
+    let counterInterval = null;
+    let stepInterval = null;
+    let currentStep = 0;
+    const loadingSteps = [
+      "Reading insurance policy document...",
+      "Extracting coverage requirements...",
+      "Parsing patient medical record...",
+      "Cross-referencing clinical criteria...",
+      "Computing denial risk score..."
+    ];
+
+    /* ─── Screen Management ──────────────────────────────────────── */
+    const screenDisplay = {
+      'upload-screen':  'block',
+      'loading-screen': 'flex',
+      'results-screen': 'block'
+    };
+    function showScreen(id) {
+      ['upload-screen', 'loading-screen', 'results-screen'].forEach(s => {
+        document.getElementById(s).style.display = s === id ? screenDisplay[s] : 'none';
+      });
+    }
+
+    function resetToUpload() {
+      policyFileObj = null;
+      recordFileObj = null;
+      if (policyPdfUrl && !isDemoMode) URL.revokeObjectURL(policyPdfUrl);
+      if (recordPdfUrl && !isDemoMode) URL.revokeObjectURL(recordPdfUrl);
+      policyPdfUrl = null;
+      recordPdfUrl = null;
+      isDemoMode = false;
+
+      document.getElementById('policy-input').value = '';
+      document.getElementById('record-input').value = '';
+      document.getElementById('policy-box').classList.remove('selected');
+      document.getElementById('record-box').classList.remove('selected');
+      document.getElementById('policy-filename').textContent = '';
+      document.getElementById('record-filename').textContent = '';
+
+      const btn = document.getElementById('analyze-btn');
+      btn.disabled = true;
+      btn.classList.add('disabled');
+
+      showScreen('upload-screen');
+    }
+
+    /* ─── File Handling ──────────────────────────────────────────── */
+    function truncateFilename(name, max) {
+      return name.length > max ? name.substring(0, max - 3) + '...' : name;
+    }
+
+    document.getElementById('policy-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      policyFileObj = file;
+      isDemoMode = false;
+      if (policyPdfUrl) URL.revokeObjectURL(policyPdfUrl);
+      policyPdfUrl = URL.createObjectURL(file);
+      document.getElementById('policy-box').classList.add('selected');
+      document.getElementById('policy-filename').textContent = truncateFilename(file.name, 40);
+      checkBothReady();
+    });
+
+    document.getElementById('record-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      recordFileObj = file;
+      isDemoMode = false;
+      if (recordPdfUrl) URL.revokeObjectURL(recordPdfUrl);
+      recordPdfUrl = URL.createObjectURL(file);
+      document.getElementById('record-box').classList.add('selected');
+      document.getElementById('record-filename').textContent = truncateFilename(file.name, 40);
+      checkBothReady();
+    });
+
+    function checkBothReady() {
+      const ready = (policyFileObj || isDemoMode) && (recordFileObj || isDemoMode);
+      const btn = document.getElementById('analyze-btn');
+      btn.disabled = !ready;
+      if (ready) btn.classList.remove('disabled');
+      else btn.classList.add('disabled');
+    }
+
+    /* ─── Demo Mode ──────────────────────────────────────────────── */
+    document.getElementById('demo-btn').addEventListener('click', () => {
+      isDemoMode = true;
+      policyFileObj = null;
+      recordFileObj = null;
+
+      document.getElementById('policy-box').classList.add('selected');
+      document.getElementById('record-box').classList.add('selected');
+      document.getElementById('policy-filename').textContent = 'demo_policy.pdf';
+      document.getElementById('record-filename').textContent = 'demo_record.pdf';
+
+      policyPdfUrl = '/static/demo_policy.pdf';
+      recordPdfUrl = '/static/demo_record.pdf';
+      checkBothReady();
+    });
+
+    /* ─── Loading Animations ─────────────────────────────────────── */
+    function startLoading() {
+      showScreen('loading-screen');
+
+      // Progress bar
+      const fill = document.getElementById('progress-fill');
+      fill.style.animation = 'none';
+      fill.style.width = '0%';
+      // Force reflow
+      void fill.offsetWidth;
+      fill.style.animation = 'progressFill 18s cubic-bezier(0.1, 0.3, 0.6, 0.9) forwards';
+
+      // Counter — sweep 00→99 once over 18s, stop there
+      const counterEl = document.getElementById('loading-counter');
+      counterEl.textContent = '00';
+      const counterDuration = 18000;
+      const counterStart = performance.now();
+      function tickCounter(now) {
+        const t = Math.min((now - counterStart) / counterDuration, 1);
+        counterEl.textContent = String(Math.floor(t * 99)).padStart(2, '0');
+        if (t < 1 && counterInterval !== null) counterInterval = requestAnimationFrame(tickCounter);
+      }
+      counterInterval = requestAnimationFrame(tickCounter);
+
+      // Step text
+      currentStep = 0;
+      const stepEl = document.getElementById('loading-step');
+      stepEl.style.opacity = '1';
+      stepEl.textContent = loadingSteps[0];
+      stepInterval = setInterval(() => {
+        stepEl.style.opacity = '0';
+        setTimeout(() => {
+          currentStep = (currentStep + 1) % loadingSteps.length;
+          stepEl.textContent = loadingSteps[currentStep];
+          stepEl.style.opacity = '1';
+        }, 300);
+      }, 2000);
+    }
+
+    function stopLoading() {
+      cancelAnimationFrame(counterInterval);
+      counterInterval = null;
+      clearInterval(stepInterval);
+      const fill = document.getElementById('progress-fill');
+      fill.style.animation = 'none';
+      fill.style.width = '100%';
+    }
+
+    /* ─── Analyze ────────────────────────────────────────────────── */
+    document.getElementById('analyze-btn').addEventListener('click', async () => {
+      if (document.getElementById('analyze-btn').disabled) return;
+      startLoading();
+      try {
+        let result;
+        if (isDemoMode) {
+          const res = await fetch('/analyze-demo', { method: 'POST' });
+          result = await res.json();
+        } else {
+          const formData = new FormData();
+          formData.append('policy_file', policyFileObj);
+          formData.append('medical_record', recordFileObj);
+          const res = await fetch('/analyze', { method: 'POST', body: formData });
+          result = await res.json();
+        }
+        if (result.error) throw new Error(result.error);
+        stopLoading();
+        renderResults(result);
+      } catch (err) {
+        stopLoading();
+        showScreen('upload-screen');
+        alert('Analysis failed: ' + err.message);
+      }
+    });
+
+    /* ─── Gauge Animation ────────────────────────────────────────── */
+    function animateGauge(score) {
+      const arc = document.getElementById('gauge-arc');
+      const totalLength = 283;
+
+      let color;
+      if (score < 25) color = 'var(--green)';
+      else if (score < 50) color = 'var(--amber)';
+      else if (score < 75) color = '#EA580C';
+      else color = 'var(--red)';
+      arc.style.stroke = color;
+
+      arc.style.strokeDasharray = totalLength;
+      arc.style.strokeDashoffset = totalLength;
+
+      const duration = 1200;
+      const startTime = performance.now();
+
+      function step(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const current = totalLength - (eased * (score / 100) * totalLength);
+        arc.style.strokeDashoffset = current;
+        if (t < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ─── Count-Up ───────────────────────────────────────────────── */
+    function animateCountUp(el, from, to, duration) {
+      const startTime = performance.now();
+      function step(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 2);
+        el.textContent = Math.round(from + (to - from) * eased);
+        if (t < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ─── Score color helpers ────────────────────────────────────── */
+    function scoreColor(score) {
+      if (score < 25) return 'var(--green)';
+      if (score < 50) return 'var(--amber)';
+      if (score < 75) return '#EA580C';
+      return 'var(--red)';
+    }
+
+    function riskClass(label) {
+      const l = (label || '').toLowerCase();
+      if (l.includes('very')) return 'risk-very-high';
+      if (l.includes('high')) return 'risk-high';
+      if (l.includes('mod')) return 'risk-moderate';
+      return 'risk-low';
+    }
+
+    /* ─── Priority tier helper ───────────────────────────────────── */
+    function priorityClass(i, total) {
+      if (i < 2) return 'p-critical';
+      if (i < Math.max(4, Math.ceil(total * 0.45))) return 'p-high';
+      if (i < Math.max(6, Math.ceil(total * 0.72))) return 'p-mid';
+      return '';
+    }
+
+    /* ─── Render Results ─────────────────────────────────────────── */
+    function renderResults(data) {
+      // PDF viewer
+      const iframe = document.getElementById('pdf-viewer');
+      iframe.src = policyPdfUrl || '';
+      window._policyUrl = policyPdfUrl || '';
+      window._recordUrl = recordPdfUrl || '';
+
+      // Reset tab state
+      document.getElementById('tab-policy').classList.add('active');
+      document.getElementById('tab-record').classList.remove('active');
+
+      const score = data.score ?? 0;
+      const label = data.label ?? 'Unknown';
+
+      // Score number color
+      document.getElementById('score-number').style.color = scoreColor(score);
+
+      // Count-up animation
+      animateCountUp(document.getElementById('score-number'), 0, score, 1000);
+
+      // Gauge
+      animateGauge(score);
+
+      // Risk badge
+      const badge = document.getElementById('risk-badge');
+      badge.textContent = label.toUpperCase();
+      badge.className = 'risk-badge ' + riskClass(label);
+
+      // Mini stats
+      document.getElementById('stat-factors').textContent = (data.risk_factors || []).length;
+      document.getElementById('stat-actions').textContent = (data.suggested_actions || []).length;
+      document.getElementById('stat-date').textContent = new Date().toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+
+      // Rationale
+      document.getElementById('rationale-text').textContent = data.rationale || '';
+
+      // Risk factors
+      const rfList = document.getElementById('risk-factors-list');
+      rfList.innerHTML = '';
+      (data.risk_factors || []).forEach((f, i) => {
+        const row = document.createElement('div');
+        row.className = 'factor-row';
+        const pc = priorityClass(i, (data.risk_factors || []).length);
+        row.innerHTML = `<span class="row-index ${pc}">${String(i + 1).padStart(2, '0')}</span><span class="row-text">${escapeHtml(f)}</span>`;
+        rfList.appendChild(row);
+      });
+
+      // Actions
+      const actList = document.getElementById('actions-list');
+      actList.innerHTML = '';
+      (data.suggested_actions || []).forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'action-row';
+        const pc = priorityClass(i, (data.suggested_actions || []).length);
+        row.innerHTML = `<span class="row-index ${pc}">${String(i + 1).padStart(2, '0')}</span><span class="row-text">${escapeHtml(a)}</span>`;
+        actList.appendChild(row);
+      });
+
+      // Count badges
+      document.getElementById('rf-count').textContent = (data.risk_factors || []).length;
+      document.getElementById('ac-count').textContent = (data.suggested_actions || []).length;
+
+      showScreen('results-screen');
+
+      // Stagger-animate cards
+      document.querySelectorAll('.analysis-card').forEach((card, i) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'none';
+        setTimeout(() => {
+          card.style.transition = 'opacity 450ms ease-out, transform 450ms ease-out';
+          card.style.opacity = '1';
+          card.style.transform = 'translateY(0)';
+        }, i * 80);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    /* ─── PDF Tabs ───────────────────────────────────────────────── */
+    document.getElementById('tab-policy').addEventListener('click', () => {
+      document.getElementById('pdf-viewer').src = window._policyUrl || '';
+      document.getElementById('tab-policy').classList.add('active');
+      document.getElementById('tab-record').classList.remove('active');
+    });
+    document.getElementById('tab-record').addEventListener('click', () => {
+      document.getElementById('pdf-viewer').src = window._recordUrl || '';
+      document.getElementById('tab-record').classList.add('active');
+      document.getElementById('tab-policy').classList.remove('active');
+    });
+
+    /* ─── Copy Report ────────────────────────────────────────────── */
+    document.getElementById('copy-btn').addEventListener('click', () => {
+      const btn = document.getElementById('copy-btn');
+      const score = document.getElementById('score-number').textContent;
+      const label = document.getElementById('risk-badge').textContent;
+      const rationale = document.getElementById('rationale-text').textContent;
+      const factors = Array.from(document.querySelectorAll('#risk-factors-list .row-text'))
+        .map((el, i) => `${i + 1}. ${el.textContent}`).join('\n');
+      const actions = Array.from(document.querySelectorAll('#actions-list .row-text'))
+        .map((el, i) => `${i + 1}. ${el.textContent}`).join('\n');
+      const text = [
+        'PA DENIAL RISK REPORT',
+        '='.repeat(40),
+        `Score: ${score}/100 — ${label}`,
+        '',
+        'WHY THIS SCORE:',
+        rationale,
+        '',
+        'RISK FACTORS:',
+        factors,
+        '',
+        'ACTION ITEMS:',
+        actions,
+        '',
+        `Generated by PreAuth.ai · ${new Date().toLocaleDateString()}`
+      ].join('\n');
+
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = 'Copy Full Report'; }, 2000);
+      }).catch(() => {
+        btn.textContent = 'Copy failed';
+        setTimeout(() => { btn.textContent = 'Copy Full Report'; }, 2000);
+      });
+    });
+
+    /* ─── New Analysis ───────────────────────────────────────────── */
+    document.getElementById('new-analysis-btn').addEventListener('click', resetToUpload);
+  </script>
+</body>
+</html>

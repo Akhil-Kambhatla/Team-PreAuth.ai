@@ -1,82 +1,58 @@
-# Claude-Hackathon
+# PreAuth.ai — PA Denial Risk Scorer
 
 > **Getting care should not depend on paperwork.**  
 > **PreAuth.ai helps doctors and care teams move through prior authorization faster, so patients can get treated sooner.**
+
+Upload an insurance policy PDF + patient medical record → get an AI-powered denial risk score before you submit.
+
+**The problem:** Doctors spend 13 hours/week on prior authorization paperwork. 94% say it harms patient care. Every existing AI tool requires EHR integration and enterprise contracts — leaving solo and rural clinics with nothing.
+
+**What this does:** Upload two PDFs. Get back a 0–100 denial risk score, plain-English explanation, and exact list of what to fix. No EHR. No contract. Just a browser.
+
+## How to run
+
+```bash
+cd prior_auth
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and fill in your Anthropic API key
+cp .env.example .env
+# edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+
+# Generate demo PDFs (only needed once)
+python generate_demo_pdfs.py
+
+# Start the server
+uvicorn main:app --reload
+```
+
+Open http://localhost:8000 and click **Load Demo Case** to see it in action.
+
+## Demo scenario
+
+The included demo shows a rheumatoid arthritis patient being prescribed Humira. The record has 4 critical gaps vs. the BlueCrest policy — wrong diagnosis code, incomplete step therapy documentation, missing DAS28 score, and no rheumatologist note. Claude catches all of them.
 
 ## Why this matters
 
 Doctors and care teams spend too much time going back and forth with insurance companies before they can move ahead with treatment. That means delays, stress, and in some cases, patients giving up before they get the care they need.
 
-We built **PreAuth.ai** to make that process simpler, faster, and less frustrating.
-
-## What it does
-
-**PreAuth.ai** is a simple platform that helps healthcare providers handle prior authorization with less manual work.
-
-With it, users can:
-
-- upload or enter patient and treatment details
-- see what information is missing before submission
-- generate a cleaner, more complete authorization request
-- track status without messy back-and-forth
-- reduce delays that keep patients waiting
-
-## The big idea
-
-Instead of making doctors and staff chase forms, portals, and repeated follow-ups, **PreAuth.ai** brings the process into one clear flow**.
-
-That means:
-
-- less time wasted
-- fewer avoidable delays
-- better chances that patients actually get treated
-
-## Who it is for
-
-- doctors
-- clinic staff
-- hospital admin teams
-- care coordinators
-
-This is not just a workflow tool.  
-It solves a real problem that affects real patients.
-
-When treatment gets delayed, people suffer.  
-When admin work takes over, doctors lose time they should be spending on care.  
-**PreAuth.ai tackles that problem directly.**
-
 ## Features
 
-- clean and simple interface
-- guided prior authorization submission flow
-- missing-info detection
-- status tracking
-- faster handoff between provider and insurer
-- built to save time for care teams
+- Clean browser-based interface — no EHR or enterprise contract required
+- Upload any policy PDF + medical record PDF
+- 0–100 denial risk score with plain-English explanation
+- Exact list of gaps and what to fix before submitting
+- One-click demo case with a pre-loaded scenario
 
 ## How it works
 
-1. User enters patient and treatment request details
-2. The system checks for missing or weak information
-3. It prepares a stronger submission package
-4. The provider tracks progress in one place
-5. The patient gets fewer delays and a smoother path to care
-
-## What makes this different
-
-A lot of healthcare tools are built around the system.  
-We built this around the **patient delay problem**.
-
-Our focus is simple:  
-**less waiting, less admin pain, more treatment.**
-
-## Future plans
-
-- insurer-specific workflows
-- real-time document validation
-- better dashboard for clinic teams
-- patient-side updates and transparency
-- deeper integration with hospital systems
+1. Upload the insurer's policy PDF and the patient's medical record
+2. Claude extracts and compares the two documents
+3. Missing or weak criteria are flagged with a risk score
+4. The provider sees exactly what to fix before submitting
+5. Fewer denials, less back-and-forth, faster treatment
 
 ## Built by
 
@@ -84,6 +60,6 @@ Our focus is simple:
 - Rohith Kumar Tappa
 - Venkat Gollangi
 
-## Final note
+---
 
 > **No patient should be left waiting because paperwork moved slower than their illness.**
